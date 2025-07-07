@@ -23,6 +23,6 @@ foreach (var result in results)
 for (int i = 0; i < results.Length; i++)
 {
     MagickImage? image = results[i].DiffImage;
-    image.Write($"diff-{i}.bmp");
+    image.Write($"diff-{i}.png");
 }
 

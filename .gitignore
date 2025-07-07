@@ -54,4 +54,5 @@ TestResult.xml
 nunit-*.xml
 
 *.bmp
+*.png
 .vscode
