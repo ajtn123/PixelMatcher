@@ -66,19 +66,23 @@ public class Matcher(params MagickImage[] images)
 public class MatchResult
 {
     private MagickImage? diffImage;
+    private double? deviation = null;
 
     public bool IsExact => DifferentPixels.Length == 0;
+    public double Deviation => deviation ??= DifferentPixels.MeanSquaredDeviation(MatchedWidth * MatchedHeight * ChannelMap.Length);
+    public uint MatchedWidth => Math.Min(Image.Width, BaseImage.Width);
+    public uint MatchedHeight => Math.Min(Image.Height, BaseImage.Height);
     public required (PixelChannel, uint, uint)[] ChannelMap { get; set; }
     public required PixelDiff[] DifferentPixels { get; set; }
     public required MagickImage BaseImage { get; set; }
     public required MagickImage Image { get; set; }
     public MagickImage DiffImage => diffImage ??= GenerateDiffImage();
 
-    private MagickImage GenerateDiffImage()
+    public MagickImage GenerateDiffImage()
     {
         var diff = DifferentPixels;
-        var width = Math.Min(Image.Width, BaseImage.Width);
-        var height = Math.Min(Image.Height, BaseImage.Height);
+        var width = MatchedWidth;
+        var height = MatchedHeight;
         var image = new MagickImage(MagickColors.Black, width, height)
         {
             ColorSpace = BaseImage.ColorSpace,
@@ -120,7 +124,7 @@ public class MatchResult
         pixels.SetPixels(pixelsArray);
         image.Transparent(MagickColors.Black);
 
-        return image;
+        return diffImage = image;
     }
 }
 
@@ -141,5 +145,14 @@ public static class Utils
         var allChannels = baseMap.Keys.Union(map.Keys);
 
         return [.. allChannels.Select(key => (key, baseMap.TryGetValue(key, out var v1) ? v1 : uint.MaxValue, map.TryGetValue(key, out var v2) ? v2 : uint.MaxValue)).OrderBy(x => x.Item2)];
+    }
+
+    public static double MeanSquaredDeviation(this PixelDiff[] diffs, long totalLength)
+    {
+        var deviation = 0d;
+        foreach (var diff in diffs)
+            foreach (var p in diff.ChannelDiffs)
+                deviation += p * p;
+        return deviation / totalLength;
     }
 }
