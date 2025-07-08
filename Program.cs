@@ -1,4 +1,5 @@
-﻿using ImageMagick;
+﻿using System.Diagnostics;
+using ImageMagick;
 using PixelMatcher;
 
 FileInfo[] files = [.. args.Select(x => new FileInfo(x)).Where(x => x.Exists)];
@@ -11,19 +12,18 @@ if (images.Length < 2) return;
 
 var matcher = new Matcher(images);
 
+Stopwatch stopwatch = Stopwatch.StartNew();
+
 var results = matcher.Match();
 
-// foreach (var result in results)
-//     foreach (var p in result.DifferentPixels)
-//         Console.WriteLine($"{p.X,6}{p.Y,6}:{p.ChannelDiffs.Aggregate("", (a, b) => $"{a}{b,10:0.00}")}");
+for (int i = 0; i < results.Length; i++)
+    Console.WriteLine($"{i + 1}. Different Pixel: {results[i].DifferentPixels.Length}");
 
-foreach (var result in results)
-    Console.WriteLine($"Different Pixel: {result.DifferentPixels.Length,12}");
+var diffImages = results.Select(r => r.DiffImage).ToArray();
+
+stopwatch.Stop();
+Console.WriteLine($"Time Used: {stopwatch.Elapsed.TotalMilliseconds} ms");
 
 var opID = DateTime.Now.Millisecond;
 for (int i = 0; i < results.Length; i++)
-{
-    MagickImage? image = results[i].DiffImage;
-    image.Write($"diff-{opID}-{i}.png");
-}
-
+    diffImages[i].Write($"diff-{opID,3:000}-{i}.png");
