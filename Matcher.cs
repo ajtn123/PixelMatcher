@@ -34,7 +34,9 @@ public class Matcher(params MagickImage[] images)
                     else
                     {
                         for (uint c = 0; c < channelMap.Length; c++)
-                            if (channelMap[c] == uint.MaxValue)
+                            if (channelMap[c] == uint.MaxValue - 1)
+                                channelDiffs[c] = basePixel[c] - Quantum.Max;
+                            else if (channelMap[c] == uint.MaxValue)
                                 channelDiffs[c] = basePixel[c];
                             else
                                 channelDiffs[c] = basePixel[c] - pixel[channelMap[c]];
@@ -56,7 +58,7 @@ public class Matcher(params MagickImage[] images)
         PixelChannel[] channels = [.. image.Channels];
         for (uint i = 0; i < baseChannels.Length; i++)
         {
-            uint r = uint.MaxValue;
+            uint r = baseChannels[i] == PixelChannel.Alpha ? uint.MaxValue - 1 : uint.MaxValue;
             for (uint o = 0; o < channels.Length; o++)
                 if (baseChannels[i] == channels[o]) { r = o; break; }
             map.Add(r);
@@ -89,21 +91,19 @@ public class MatchResult
 
         if (image.HasAlpha)
         {
-            uint alphac = 0;
+            uint alphac;
             for (alphac = 0; alphac < image.ChannelCount; alphac++)
                 if (image.Channels.ElementAt((int)alphac) == PixelChannel.Alpha) break;
 
             Console.WriteLine(alphac);
 
             for (int y = 0; y < image.Height; y++)
-            {
                 for (int x = 0; x < image.Width; x++)
                 {
                     var pixel = pixels.GetPixel(x, y);
                     var alpha = pixel.GetChannel(alphac);
                     pixel.SetChannel(alphac, Quantum.Max - alpha);
                 }
-            }
         }
         image.Transparent(MagickColors.Black);
 
