@@ -20,9 +20,10 @@ var results = matcher.Match();
 foreach (var result in results)
     Console.WriteLine($"Different Pixel: {result.DifferentPixels.Length,12}");
 
+var opID = DateTime.Now.Millisecond;
 for (int i = 0; i < results.Length; i++)
 {
     MagickImage? image = results[i].DiffImage;
-    image.Write($"diff-{i}.png");
+    image.Write($"diff-{opID}-{i}.png");
 }
 
