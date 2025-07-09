@@ -2,42 +2,36 @@ using ImageMagick;
 
 namespace PixelMatcher;
 
-public class Matcher(params MagickImage[] images)
+public static class Matcher
 {
-    public MagickImage[] Images { get; } = images;
-
-    public MatchResult[] Match()
+    public static MatchResult[] Match(FileInfo baseImageFile, params FileInfo[] imageFiles)
     {
-        var results = new MatchResult[Images.Length - 1];
+        var results = new MatchResult[imageFiles.Length];
 
-        if (Images.Any(i => i.HasAlpha))
-            foreach (var image in Images)
-                image.Alpha(AlphaOption.Set);
-
-        var baseImage = Images[0];
+        using MagickImage baseImage = new(baseImageFile);
+        BaseImageInfo baseInfo = new(baseImage);
         var basePixels = baseImage.GetPixels().ToArray();
         if (basePixels == null) return results;
-        var baseWidth = baseImage.Width;
-        var baseHeight = baseImage.Height;
-        var baseChannelCount = baseImage.ChannelCount;
 
-        for (int i = 1; i < Images.Length; i++)
+        for (int i = 0; i < imageFiles.Length; i++)
         {
-            MagickImage image = Images[i];
+            using MagickImage image = new(imageFiles[i]);
+            if (baseImage.HasAlpha) image.Alpha(AlphaOption.Set);
+            else if (image.HasAlpha) baseImage.Alpha(AlphaOption.Activate);
             var width = image.Width;
             var height = image.Height;
             var channelCount = image.ChannelCount;
-            var matchedWidth = Math.Min(width, baseWidth);
-            var matchedHeight = Math.Min(height, baseHeight);
-            var channelMap = Utils.MapChannel(baseImage, image);
+            var matchedWidth = Math.Min(width, baseInfo.Width);
+            var matchedHeight = Math.Min(height, baseInfo.Height);
+            var channelMap = Utils.MapChannel(baseImage.Channels, image.Channels);
             (uint, uint)[] map = [.. channelMap.Select(x => (x.Item2, x.Item3))];
             List<PixelDiff> diff = [];
 
-            var pixels = image.GetPixels().ToArray();
+            var pixels = image.GetPixelsUnsafe().ToArray();
             if (pixels != null)
                 for (int y = 0; y < matchedHeight; y++)
                 {
-                    var startingBaseIndex = y * baseWidth * baseChannelCount;
+                    var startingBaseIndex = y * baseInfo.Width * baseInfo.ChannelCount;
                     var startingIndex = y * width * channelCount;
                     for (int x = 0; x < matchedWidth; x++)
                     {
@@ -47,7 +41,7 @@ public class Matcher(params MagickImage[] images)
                         {
                             var baseChannelIndex = map[c].Item1;
                             var channelIndex = map[c].Item2;
-                            var baseChannel = baseChannelIndex == uint.MaxValue ? 0 : basePixels[startingBaseIndex + x * baseChannelCount + baseChannelIndex];
+                            var baseChannel = baseChannelIndex == uint.MaxValue ? 0 : basePixels[startingBaseIndex + x * baseInfo.ChannelCount + baseChannelIndex];
                             var channel = channelIndex == uint.MaxValue ? 0 : pixels[startingIndex + x * channelCount + channelIndex];
                             channelDiffs[c] = baseChannel - channel;
                         }
@@ -56,8 +50,8 @@ public class Matcher(params MagickImage[] images)
                             diff.Add(new(x, y, channelDiffs));
                     }
                 }
-
-            results[i - 1] = new() { DifferentPixels = [.. diff], Image = image, BaseImage = baseImage, ChannelMap = channelMap };
+            if (baseImage.HasAlpha && !baseInfo.HasAlpha) baseImage.Alpha(AlphaOption.Deactivate);
+            results[i] = new() { DifferentPixels = [.. diff], ImageWidth = image.Width, ImageHeight = image.Height, BaseImageInfo = baseInfo, ChannelMap = channelMap };
         }
         return results;
     }
@@ -65,18 +59,17 @@ public class Matcher(params MagickImage[] images)
 
 public class MatchResult
 {
-    private MagickImage? diffImage;
     private double? deviation = null;
 
     public bool IsExact => DifferentPixels.Length == 0;
     public double Deviation => deviation ??= DifferentPixels.MeanSquaredDeviation(MatchedWidth * MatchedHeight * ChannelMap.Length);
-    public uint MatchedWidth => Math.Min(Image.Width, BaseImage.Width);
-    public uint MatchedHeight => Math.Min(Image.Height, BaseImage.Height);
+    public required uint ImageWidth { get; set; }
+    public required uint ImageHeight { get; set; }
+    public uint MatchedWidth => Math.Min(ImageWidth, BaseImageInfo.Width);
+    public uint MatchedHeight => Math.Min(ImageHeight, BaseImageInfo.Height);
     public required (PixelChannel, uint, uint)[] ChannelMap { get; set; }
     public required PixelDiff[] DifferentPixels { get; set; }
-    public required MagickImage BaseImage { get; set; }
-    public required MagickImage Image { get; set; }
-    public MagickImage DiffImage => diffImage ??= GenerateDiffImage();
+    public required BaseImageInfo BaseImageInfo { get; set; }
 
     public MagickImage GenerateDiffImage()
     {
@@ -85,9 +78,9 @@ public class MatchResult
         var height = MatchedHeight;
         var image = new MagickImage(MagickColors.Black, width, height)
         {
-            ColorSpace = BaseImage.ColorSpace,
-            Depth = BaseImage.Depth,
-            HasAlpha = BaseImage.HasAlpha
+            ColorSpace = BaseImageInfo.ColorSpace,
+            Depth = BaseImageInfo.Depth,
+            HasAlpha = BaseImageInfo.HasAlpha
         };
         var pixels = image.GetPixels();
         var pixelsArray = pixels.ToArray();
@@ -95,7 +88,7 @@ public class MatchResult
         var channelCount = (int)image.ChannelCount;
         var alphaChannelIndex = image.Channels.Index().FirstOrDefault(x => x.Item2 == PixelChannel.Alpha, (int.MinValue, PixelChannel.Alpha)).Item1;
 
-        if (channelCount == BaseImage.ChannelCount)
+        if (channelCount == BaseImageInfo.ChannelCount)
             if (image.HasAlpha)
                 foreach (var pixel in diff)
                 {
@@ -108,7 +101,7 @@ public class MatchResult
         else
         {
             Console.WriteLine("Remapping Diff Image Channel");
-            var map = Utils.MapChannel(image, BaseImage).OrderBy(x => x.Item3).Select(x => x.Item2);
+            var map = Utils.MapChannel(image.Channels, BaseImageInfo.Channels).OrderBy(x => x.Item3).Select(x => x.Item2);
 
             if (image.HasAlpha)
                 foreach (var pixel in diff)
@@ -124,61 +117,24 @@ public class MatchResult
         pixels.SetPixels(pixelsArray);
         image.Transparent(MagickColors.Black);
 
-        return diffImage = image;
+        return image;
     }
 }
 
-public class PixelDiff(int x, int y, params float[] channelDiffs)
+public readonly struct PixelDiff(int x, int y, params float[] channelDiffs)
 {
     public int X { get; } = x;
     public int Y { get; } = y;
-    public float[] ChannelDiffs { get; set; } = channelDiffs;
+    public float[] ChannelDiffs { get; } = channelDiffs;
 }
 
-public static class Utils
+public class BaseImageInfo(MagickImage image)
 {
-    public static (PixelChannel, uint, uint)[] MapChannel(MagickImage baseImage, MagickImage image)
-    {
-        var baseMap = baseImage.Channels.Index().ToDictionary(t => t.Item, t => (uint)t.Index);
-        var map = image.Channels.Index().ToDictionary(t => t.Item, t => (uint)t.Index);
-
-        var allChannels = baseMap.Keys.Union(map.Keys);
-
-        return [.. allChannels.Select(key => (key, baseMap.TryGetValue(key, out var v1) ? v1 : uint.MaxValue, map.TryGetValue(key, out var v2) ? v2 : uint.MaxValue)).OrderBy(x => x.Item2)];
-    }
-
-    public static double MeanSquaredDeviation(this PixelDiff[] diffs, long totalLength)
-    {
-        var deviation = 0d;
-        foreach (var diff in diffs)
-            foreach (var p in diff.ChannelDiffs)
-                deviation += p * p;
-        return deviation / totalLength;
-    }
-
-    public static IEnumerable<string> ShortenPaths(IEnumerable<string> paths)
-    {
-        if (!paths.Any()) return paths;
-
-        var splitPaths = paths.Select(p => p.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)).ToArray();
-
-        int commonLength = Enumerable.Range(0, splitPaths.Min(p => p.Length))
-            .TakeWhile(i => splitPaths.All(p => string.Equals(p[i], splitPaths[0][i], StringComparison.OrdinalIgnoreCase)))
-            .Count();
-
-        return splitPaths.Select(p => string.Join(Path.DirectorySeparatorChar, p.Skip(commonLength)));
-    }
-
-    public static void Log(object content) => Log(content, ConsoleColor.Gray);
-    public static void Log(object content, ConsoleColor color)
-    {
-        Console.ForegroundColor = color;
-        Console.Write(content);
-    }
-    public static void Logl(object content) => Logl(content, ConsoleColor.Gray);
-    public static void Logl(object content, ConsoleColor color)
-    {
-        Console.ForegroundColor = color;
-        Console.WriteLine(content);
-    }
+    public uint Width { get; } = image.Width;
+    public uint Height { get; } = image.Height;
+    public PixelChannel[] Channels { get; } = [.. image.Channels];
+    public uint ChannelCount { get; } = image.ChannelCount;
+    public ColorSpace ColorSpace { get; } = image.ColorSpace;
+    public uint Depth { get; } = image.Depth;
+    public bool HasAlpha { get; } = image.HasAlpha;
 }

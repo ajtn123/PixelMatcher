@@ -2,30 +2,24 @@
 using ImageMagick;
 using PixelMatcher;
 
-FileInfo[] files = [.. args.Select(x => new FileInfo(x)).Where(x => x.Exists)];
-if (files.Length < 2) return;
-
-MagickImage[] images = [.. files.Select(x => new MagickImage(x))];
-if (images.Length < 2) return;
-
-var matcher = new Matcher(images);
+var files = args.Select(x => new FileInfo(x)).Where(x => x.Exists);
+if (files.Count() < 2) return;
 
 Stopwatch stopwatch = Stopwatch.StartNew();
 
-var results = matcher.Match();
+var results = Matcher.Match(files.First(), [.. files.Skip(1)]);
 var diffImagesTasks = results.Select(r => Task.Run(r.GenerateDiffImage)).ToArray();
 
 var imageNames = Utils.ShortenPaths(files.Select(x => x.FullName)).ToArray();
-var baseImage = images[0];
 Utils.Logl($"Base Image: {imageNames[0]}");
-Utils.Logl($"Dimensions: {$"{baseImage.Width:n0}*{baseImage.Height:n0}",24}");
+Utils.Logl($"Dimensions: {$"{results[0].BaseImageInfo.Width:n0}*{results[0].BaseImageInfo.Height:n0}",24}");
 
 for (int i = 0; i < results.Length; i++)
 {
     var r = results[i];
     var index = i + 1;
-    var iWidth = r.Image.Width;
-    var iHeight = r.Image.Height;
+    var iWidth = r.ImageWidth;
+    var iHeight = r.ImageHeight;
     var iPixels = iWidth * iHeight;
     var width = r.MatchedWidth;
     var height = r.MatchedHeight;
