@@ -22,7 +22,7 @@ stopwatch.Stop();
 Console.WriteLine($"Time Used: {stopwatch.Elapsed.TotalMilliseconds} ms");
 
 Console.WriteLine("Save Diff Images? (Y/n)");
-if (Console.ReadLine()?.Contains('n') ?? false) return;
+if (Console.ReadLine()?.Any("Nn".Contains) ?? false) return;
 
 var formats = MagickNET.SupportedFormats.Where(x => x.SupportsWriting).Select(x => x.Format.ToString().ToLower());
 Console.WriteLine($"Format? ({formats.Aggregate((x, y) => x + "/" + y).Replace("/png/", "/").Insert(0, "PNG/")})");
