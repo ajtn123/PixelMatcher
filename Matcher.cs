@@ -8,26 +8,30 @@ public static class Matcher
     {
         var results = new MatchResult[imageFiles.Length];
 
-        using MagickImage baseImage = new(baseImageFile);
+        MagickImage baseImage = new(baseImageFile);
         BaseImageInfo baseInfo = new(baseImage);
-        var basePixels = baseImage.GetPixels().ToArray();
+        var bpc = baseImage.GetPixelsUnsafe();
+        var basePixels = bpc.ToArray();
+        baseImage.Dispose();
         if (basePixels == null) return results;
 
         for (int i = 0; i < imageFiles.Length; i++)
         {
-            using MagickImage image = new(imageFiles[i]);
-            if (baseImage.HasAlpha) image.Alpha(AlphaOption.Set);
-            else if (image.HasAlpha) baseImage.Alpha(AlphaOption.Activate);
+            MagickImage image = new(imageFiles[i]);
+            if (baseInfo.HasAlpha) image.Alpha(AlphaOption.Set);
             var width = image.Width;
             var height = image.Height;
+            var channels = image.Channels.ToArray();
             var channelCount = image.ChannelCount;
             var matchedWidth = Math.Min(width, baseInfo.Width);
             var matchedHeight = Math.Min(height, baseInfo.Height);
-            var channelMap = Utils.MapChannel(baseImage.Channels, image.Channels);
+            var channelMap = Utils.MapChannel(baseInfo.Channels, channels);
             (uint, uint)[] map = [.. channelMap.Select(x => (x.Item2, x.Item3))];
             List<PixelDiff> diff = [];
 
-            var pixels = image.GetPixelsUnsafe().ToArray();
+            var pc = image.GetPixelsUnsafe();
+            var pixels = pc.ToArray();
+            image.Dispose();
             if (pixels != null)
                 for (int y = 0; y < matchedHeight; y++)
                 {
@@ -50,8 +54,7 @@ public static class Matcher
                             diff.Add(new(x, y, channelDiffs));
                     }
                 }
-            if (baseImage.HasAlpha && !baseInfo.HasAlpha) baseImage.Alpha(AlphaOption.Deactivate);
-            results[i] = new() { DifferentPixels = [.. diff], ImageWidth = image.Width, ImageHeight = image.Height, BaseImageInfo = baseInfo, ChannelMap = channelMap };
+            results[i] = new() { DifferentPixels = [.. diff], ImageWidth = width, ImageHeight = height, BaseImageInfo = baseInfo, ChannelMap = channelMap };
         }
         return results;
     }
