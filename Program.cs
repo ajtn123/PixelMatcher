@@ -12,7 +12,7 @@ var diffImagesTasks = results.Select(r => Task.Run(r.GenerateDiffImage)).ToArray
 
 var imageNames = Utils.ShortenPaths(files.Select(x => x.FullName)).ToArray();
 Utils.Logl($"Base Image: {imageNames[0]}");
-Utils.Logl($"Dimensions: {$"{results[0].BaseImageInfo.Width:n0}*{results[0].BaseImageInfo.Height:n0}",24}");
+Utils.Logl($"Dimensions: {results[0].BaseImageInfo.Width:n0}*{results[0].BaseImageInfo.Height:n0}");
 
 for (int i = 0; i < results.Length; i++)
 {
@@ -42,8 +42,19 @@ for (int i = 0; i < results.Length; i++)
 stopwatch.Stop();
 Utils.Logl($"Time Used: {stopwatch.Elapsed.TotalMilliseconds} ms");
 
-Utils.Logl("Save Diff Images? (Y/n)");
-if (Console.ReadLine()?.Any("Nn".Contains) ?? false) return;
+var matchedCount = results.Count(x => x.IsExact);
+if (matchedCount == results.Length)
+{
+    Utils.Logl("All Images Matched Perfectly!", ConsoleColor.Green);
+    Console.ReadLine();
+    return;
+}
+else
+{
+    Utils.Logl($"Matched Images: {matchedCount} / {results.Length}");
+    Utils.Logl("Save Diff Images? (Y/n)");
+    if (Console.ReadLine()?.Any("Nn".Contains) ?? false) return;
+}
 
 var formats = MagickNET.SupportedFormats.Where(x => x.SupportsWriting).Select(x => x.Format.ToString().ToLower());
 Utils.Logl($"Format? ({formats.Aggregate((x, y) => x + "/" + y).Replace("/png/", "/").Insert(0, "PNG/")})");
