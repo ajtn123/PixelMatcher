@@ -47,5 +47,6 @@ public static class Utils
     {
         Console.ForegroundColor = color;
         Console.WriteLine(content);
+        Console.ForegroundColor = ConsoleColor.Gray;
     }
 }
