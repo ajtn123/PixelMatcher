@@ -16,7 +16,7 @@ public static class Utils
 
     public static double StandardDeviation(this PixelDiff[] pixelDiffs, long totalLength)
     {
-        var deviation = 0d;
+        long deviation = 0;
         foreach (var pixel in pixelDiffs)
             foreach (var channel in pixel.ChannelDiffs)
                 deviation += channel * channel;

@@ -40,11 +40,11 @@ for (int i = 0; i < results.Length; i++)
     var deviationPercentage = deviation / maxDeviation;
     var isExact = r.IsExact;
 
-    Utils.Logl($"{$"{index,2} Name",-24}: {imageNames[index]}");
-    Utils.Logl($"{" | Matched Area",-24}: {$"{width:n0}*{height:n0}",16} / {$"{iWidth:n0}*{iHeight:n0}",16} ({matchedPercentage,6:P})");
-    Utils.Logl($"{" | Different Pixels",-24}: {diffPixels,16:n0} / {totalPixels,16:n0} ({diffPercentage,6:P})");
-    Utils.Logl($"{" | Standard Deviation",-24}: {deviation,16:n2} / {maxDeviation,16:n0} ({deviationPercentage,6:P})");
-    Utils.Log($"{" | Is Exact",-24}: "); Utils.Logl($"{isExact,35}", isExact ? ConsoleColor.Green : ConsoleColor.Red);
+    Utils.Logl($"{$"{index,2} Name",-24} {imageNames[index]}");
+    Utils.Logl($"{" | Compared Area",-24} {$"{width:n0}*{height:n0}",16} / {$"{iWidth:n0}*{iHeight:n0}",16} {matchedPercentage,8:P}");
+    Utils.Logl($"{" | Different Pixels",-24} {diffPixels,16:n0} / {totalPixels,16:n0} {diffPercentage,8:P}");
+    Utils.Logl($"{" | Standard Deviation",-24} {deviation,16:n2} / {maxDeviation,16:n0} {deviationPercentage,8:P}");
+    Utils.Log($"{" | Is Exact",-24} "); Utils.Logl($"{isExact,35}", isExact ? ConsoleColor.Green : ConsoleColor.Red);
 }
 
 stopwatch.Stop();
