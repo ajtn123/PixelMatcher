@@ -2,8 +2,16 @@
 using ImageMagick;
 using PixelMatcher;
 
-var files = args.Select(x => new FileInfo(x)).Where(x => x.Exists);
-if (files.Count() < 2) return;
+var files = args.Select(x => new FileInfo(x));
+
+var missingFiles = files.Where(f => !f.Exists);
+if (missingFiles.Any())
+{
+    Utils.Logl("Missing Files:", ConsoleColor.Red);
+    foreach (var missingFile in missingFiles)
+        Utils.Logl($" | {missingFile.FullName}", ConsoleColor.Red);
+    return;
+}
 
 Stopwatch stopwatch = Stopwatch.StartNew();
 
@@ -53,7 +61,7 @@ else
 {
     Utils.Logl($"Matched Images: {matchedCount} / {results.Length}");
     Utils.Logl("Save Diff Images? (Y/n)");
-    if (Console.ReadLine()?.Any("Nn".Contains) ?? false) return;
+    if (Console.ReadLine() is "N" or "n") return;
 }
 
 var formats = MagickNET.SupportedFormats.Where(x => x.SupportsWriting).Select(x => x.Format.ToString().ToLower());

@@ -39,15 +39,15 @@ public static class Matcher
                     var startingIndex = y * width * channelCount;
                     for (int x = 0; x < matchedWidth; x++)
                     {
-                        float[] channelDiffs = new float[map.Length];
+                        var channelDiffs = new byte[map.Length];
 
                         for (uint c = 0; c < map.Length; c++)
                         {
                             var baseChannelIndex = map[c].Item1;
                             var channelIndex = map[c].Item2;
-                            var baseChannel = baseChannelIndex == uint.MaxValue ? 0 : basePixels[startingBaseIndex + x * baseInfo.ChannelCount + baseChannelIndex];
-                            var channel = channelIndex == uint.MaxValue ? 0 : pixels[startingIndex + x * channelCount + channelIndex];
-                            channelDiffs[c] = baseChannel - channel;
+                            var baseChannel = baseChannelIndex == uint.MaxValue ? default : basePixels[startingBaseIndex + x * baseInfo.ChannelCount + baseChannelIndex];
+                            var channel = channelIndex == uint.MaxValue ? default : pixels[startingIndex + x * channelCount + channelIndex];
+                            channelDiffs[c] = (byte)Math.Abs(baseChannel - channel);
                         }
 
                         if (channelDiffs.Any(d => d != 0))
@@ -95,12 +95,13 @@ public class MatchResult
             if (image.HasAlpha)
                 foreach (var pixel in diff)
                 {
-                    var pixelData = pixel.ChannelDiffs.Select(MathF.Abs).ToArray();
-                    pixelData[alphaChannelIndex] = Quantum.Max - pixelData[alphaChannelIndex];
+                    var pixelData = pixel.ChannelDiffs.ToArray();
+                    pixelData[alphaChannelIndex] = (byte)(Quantum.Max - pixelData[alphaChannelIndex]);
                     Array.Copy(pixelData, 0, pixelsArray, (pixel.Y * width + pixel.X) * channelCount, channelCount);
                 }
-            else foreach (var pixel in diff)
-                    Array.Copy(pixel.ChannelDiffs.Select(MathF.Abs).ToArray(), 0, pixelsArray, (pixel.Y * width + pixel.X) * channelCount, channelCount);
+            else
+                foreach (var pixel in diff)
+                    Array.Copy(pixel.ChannelDiffs.ToArray(), 0, pixelsArray, (pixel.Y * width + pixel.X) * channelCount, channelCount);
         else
         {
             Console.WriteLine("Remapping Diff Image Channel");
@@ -109,12 +110,13 @@ public class MatchResult
             if (image.HasAlpha)
                 foreach (var pixel in diff)
                 {
-                    var pixelData = pixel.ChannelDiffs.Zip(map).OrderBy(x => x.Second).Take(channelCount).Select(x => MathF.Abs(x.First)).ToArray();
-                    pixelData[alphaChannelIndex] = Quantum.Max - pixelData[alphaChannelIndex];
+                    var pixelData = pixel.ChannelDiffs.Zip(map).OrderBy(x => x.Second).Take(channelCount).Select(x => x.First).ToArray();
+                    pixelData[alphaChannelIndex] = (byte)(Quantum.Max - pixelData[alphaChannelIndex]);
                     Array.Copy(pixelData, 0, pixelsArray, (pixel.Y * width + pixel.X) * channelCount, channelCount);
                 }
-            else foreach (var pixel in diff)
-                    Array.Copy(pixel.ChannelDiffs.Zip(map).OrderBy(x => x.Second).Take(channelCount).Select(x => MathF.Abs(x.First)).ToArray(), 0, pixelsArray, (pixel.Y * width + pixel.X) * channelCount, channelCount);
+            else
+                foreach (var pixel in diff)
+                    Array.Copy(pixel.ChannelDiffs.Zip(map).OrderBy(x => x.Second).Take(channelCount).Select(x => x.First).ToArray(), 0, pixelsArray, (pixel.Y * width + pixel.X) * channelCount, channelCount);
         }
 
         pixels.SetPixels(pixelsArray);
@@ -124,11 +126,11 @@ public class MatchResult
     }
 }
 
-public readonly struct PixelDiff(int x, int y, params float[] channelDiffs)
+public readonly struct PixelDiff(int x, int y, params byte[] channelDiffs)
 {
     public int X { get; } = x;
     public int Y { get; } = y;
-    public float[] ChannelDiffs { get; } = channelDiffs;
+    public byte[] ChannelDiffs { get; } = channelDiffs;
 }
 
 public class BaseImageInfo(MagickImage image)
