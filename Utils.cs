@@ -14,13 +14,13 @@ public static class Utils
         return [.. allChannels.Select(key => (key, baseMap.TryGetValue(key, out var v1) ? v1 : uint.MaxValue, map.TryGetValue(key, out var v2) ? v2 : uint.MaxValue)).OrderBy(x => x.Item2)];
     }
 
-    public static double MeanSquaredDeviation(this PixelDiff[] diffs, long totalLength)
+    public static double StandardDeviation(this PixelDiff[] pixelDiffs, long totalLength)
     {
         var deviation = 0d;
-        foreach (var diff in diffs)
-            foreach (var p in diff.ChannelDiffs)
-                deviation += p * p;
-        return deviation / totalLength;
+        foreach (var pixel in pixelDiffs)
+            foreach (var channel in pixel.ChannelDiffs)
+                deviation += channel * channel;
+        return Math.Sqrt(deviation / totalLength);
     }
 
     public static IEnumerable<string> ShortenPaths(IEnumerable<string> paths)

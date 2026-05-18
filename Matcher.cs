@@ -62,10 +62,8 @@ public static class Matcher
 
 public class MatchResult
 {
-    private double? deviation = null;
-
     public bool IsExact => DifferentPixels.Length == 0;
-    public double Deviation => deviation ??= DifferentPixels.MeanSquaredDeviation(MatchedWidth * MatchedHeight * ChannelMap.Length);
+    public double Deviation => DifferentPixels.StandardDeviation(MatchedWidth * MatchedHeight * ChannelMap.Length);
     public required uint ImageWidth { get; set; }
     public required uint ImageHeight { get; set; }
     public uint MatchedWidth => Math.Min(ImageWidth, BaseImageInfo.Width);

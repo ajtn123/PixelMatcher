@@ -32,18 +32,18 @@ for (int i = 0; i < results.Length; i++)
     var width = r.MatchedWidth;
     var height = r.MatchedHeight;
     var totalPixels = width * height;
-    var matchedPercentage = (double)totalPixels / iPixels * 100;
+    var matchedPercentage = (double)totalPixels / iPixels;
     var diffPixels = r.DifferentPixels.Length;
-    var diffPercentage = (double)diffPixels / totalPixels * 100;
+    var diffPercentage = (double)diffPixels / totalPixels;
     var deviation = r.Deviation;
-    var maxDeviation = (double)Quantum.Max * Quantum.Max;
-    var deviationPercentage = deviation / maxDeviation * 100;
+    var maxDeviation = Quantum.Max;
+    var deviationPercentage = deviation / maxDeviation;
     var isExact = r.IsExact;
 
     Utils.Logl($"{$"{index,2} Name",-24}: {imageNames[index]}");
-    Utils.Logl($"{" | Compared Dimensions",-24}: {$"{width:n0}*{height:n0}",16} / {$"{iWidth:n0}*{iHeight:n0}",16} ({matchedPercentage,6:0.00}%)");
-    Utils.Logl($"{" | Different Pixels",-24}: {diffPixels,16:n0} / {totalPixels,16:n0} ({diffPercentage,6:0.00}%)");
-    Utils.Logl($"{" | Deviation",-24}: {deviation,16:n0} / {maxDeviation,16:n0} ({deviationPercentage,6:0.00}%)");
+    Utils.Logl($"{" | Matched Area",-24}: {$"{width:n0}*{height:n0}",16} / {$"{iWidth:n0}*{iHeight:n0}",16} ({matchedPercentage,6:P})");
+    Utils.Logl($"{" | Different Pixels",-24}: {diffPixels,16:n0} / {totalPixels,16:n0} ({diffPercentage,6:P})");
+    Utils.Logl($"{" | Standard Deviation",-24}: {deviation,16:n2} / {maxDeviation,16:n0} ({deviationPercentage,6:P})");
     Utils.Log($"{" | Is Exact",-24}: "); Utils.Logl($"{isExact,35}", isExact ? ConsoleColor.Green : ConsoleColor.Red);
 }
 
