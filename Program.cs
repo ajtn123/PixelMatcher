@@ -40,7 +40,7 @@ for (int i = 0; i < results.Length; i++)
     var deviationPercentage = deviation / maxDeviation;
     var isExact = r.IsExact;
 
-    Utils.Logl($"{$"{index,2} Name",-24} {imageNames[index]}");
+    Utils.Logl($"{index,2} {imageNames[index]}", ConsoleColor.Blue);
     Utils.Logl($"{" | Compared Area",-24} {$"{width:n0}*{height:n0}",16} / {$"{iWidth:n0}*{iHeight:n0}",16} {matchedPercentage,8:P}");
     Utils.Logl($"{" | Different Pixels",-24} {diffPixels,16:n0} / {totalPixels,16:n0} {diffPercentage,8:P}");
     Utils.Logl($"{" | Standard Deviation",-24} {deviation,16:n2} / {maxDeviation,16:n0} {deviationPercentage,8:P}");
@@ -60,23 +60,23 @@ if (matchedCount == results.Length)
 else
 {
     Utils.Logl($"Matched Images: {matchedCount} / {results.Length}");
-    Utils.Logl("Save Diff Images? (Y/n)");
+    Utils.Log("Save Diff Images (Y/n) ");
     if (Console.ReadLine() is "N" or "n") return;
 }
 
 var formats = MagickNET.SupportedFormats.Where(x => x.SupportsWriting).Select(x => x.Format.ToString().ToLower());
-Utils.Logl($"Format? ({formats.Aggregate((x, y) => x + "/" + y).Replace("/png/", "/").Insert(0, "PNG/")})");
+Utils.Log($"Format ({string.Join('/', formats.Except(["png"]).Prepend("PNG"))}) ");
 var format = Console.ReadLine()?.Trim('.').ToLower();
 if (!formats.Contains(format)) format = "png";
 
-Utils.Logl("Quality? (75/0-100)");
-bool isQualitySet = uint.TryParse(Console.ReadLine(), out uint quality);
+Utils.Log("Quality (0-100) ");
+bool isQualitySet = uint.TryParse(Console.ReadLine(), out var quality);
 
-var opID = DateTime.Now.Millisecond;
+var opid = Random.Shared.GetHexString(4, true);
 for (int i = 0; i < results.Length; i++)
 {
     var diffImage = await diffImagesTasks[i];
     if (isQualitySet) diffImage.Quality = Math.Clamp(quality, 0, 100);
-    Utils.Logl($"Writing 'diff-{opID,3:000}-{i}.{format}'{(isQualitySet ? $" with quality of {diffImage.Quality}" : "")}");
-    diffImage.Write($"diff-{opID,3:000}-{i}.{format}");
+    Utils.Logl($"Writing diff-{opid}-{i}.{format}", ConsoleColor.Yellow);
+    diffImage.Write($"diff-{opid}-{i}.{format}");
 }
