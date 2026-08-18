@@ -1,0 +1,21 @@
+name: Build & Release .NET App
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Publish
+        run: dotnet publish -c Release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: app-archive
+          path: bin/Release
