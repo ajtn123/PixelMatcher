@@ -1,4 +1,4 @@
-name: Build & Release .NET App
+name: Build .NET App
 
 on:
   push:
@@ -18,4 +18,4 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: app-archive
-          path: bin/Release
+          path: bin/Release/**/publish
