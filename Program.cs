@@ -54,7 +54,7 @@ for (int i = 1; i < files.Length; i++)
     Utils.WriteTitle(i, fileNames[i], ConsoleColor.Blue);
     Utils.WriteInfoProportion("Compared Area", $"{matchedWidth:n0}*{matchedHeight:n0}", $"{imageWidth:n0}*{imageHeight:n0}", matchedPercentage);
     Utils.WriteInfoProportion("Different Pixels", diffPixels, matchedPixels, diffPercentage);
-    Utils.WriteInfoProportion("Standard Deviation", $"{deviation:n2}", maxDeviation, deviationPercentage);
+    Utils.WriteInfoProportion("Standard Deviation", $"{deviation:n3}", maxDeviation, deviationPercentage);
     foreach ((var channel, var isFromBase) in uncompared)
     {
         Utils.WriteInfo("Uncompared Channel", channel, isFromBase ? ConsoleColor.Yellow : ConsoleColor.Blue);
@@ -66,7 +66,7 @@ var identicalCount = results.Count(x => x.Identical);
 var identicalPercentage = identicalCount / results.Length;
 
 Utils.WriteTitle("+", "Summary", ConsoleColor.Yellow);
-Utils.WriteInfo("Time Used", $"{stopwatch.Elapsed.TotalSeconds} s");
+Utils.WriteInfo("Time Used", $"{stopwatch.Elapsed.TotalSeconds:n3} s");
 Utils.WriteInfoProportion("Identical Images", identicalCount, results.Length, identicalPercentage);
 
 if (identicalCount == results.Length)
