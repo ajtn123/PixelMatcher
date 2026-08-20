@@ -16,6 +16,12 @@ if (missingFiles.Any())
     return;
 }
 
+if (files.Length < 2)
+{
+    Utils.WriteTitle("!", "Provide at least 2 images", ConsoleColor.Red);
+    return;
+}
+
 Stopwatch stopwatch = Stopwatch.StartNew();
 
 var results = Matcher.Match(files.First(), files.Skip(1)).ToArray();
