@@ -4,23 +4,15 @@ namespace PixelMatcher;
 
 public static class Utils
 {
-    public static (PixelChannel, uint, uint)[] MapChannel(IEnumerable<PixelChannel> baseImage, IEnumerable<PixelChannel> image)
+    public readonly record struct ChannelPosition(PixelChannel Channel, uint BaseIndex, uint Index);
+
+    public static IEnumerable<ChannelPosition> MapChannel(IEnumerable<PixelChannel> baseChannels, IEnumerable<PixelChannel> channels)
     {
-        var baseMap = baseImage.Index().ToDictionary(t => t.Item, t => (uint)t.Index);
-        var map = image.Index().ToDictionary(t => t.Item, t => (uint)t.Index);
+        var sharedChannels = baseChannels.Intersect(channels);
+        var baseMap = baseChannels.Index().ToDictionary(o => o.Item, o => (uint)o.Index);
+        var map = channels.Index().ToDictionary(o => o.Item, o => (uint)o.Index);
 
-        var allChannels = baseMap.Keys.Union(map.Keys);
-
-        return [.. allChannels.Select(key => (key, baseMap.TryGetValue(key, out var v1) ? v1 : uint.MaxValue, map.TryGetValue(key, out var v2) ? v2 : uint.MaxValue)).OrderBy(x => x.Item2)];
-    }
-
-    public static double StandardDeviation(this PixelDiff[] pixelDiffs, long totalLength)
-    {
-        long deviation = 0;
-        foreach (var pixel in pixelDiffs)
-            foreach (var channel in pixel.ChannelDiffs)
-                deviation += channel * channel;
-        return Math.Sqrt(deviation / totalLength);
+        return sharedChannels.Select(c => new ChannelPosition(c, baseMap[c], map[c]));
     }
 
     public static IEnumerable<string> ShortenPaths(IEnumerable<string> paths)
@@ -36,17 +28,42 @@ public static class Utils
         return splitPaths.Select(p => string.Join(Path.DirectorySeparatorChar, p.Skip(commonLength)));
     }
 
-    public static void Log(object content) => Log(content, ConsoleColor.Gray);
-    public static void Log(object content, ConsoleColor color)
+    private static void L(object content, ConsoleColor? color = null)
     {
-        Console.ForegroundColor = color;
+        if (color != null)
+            Console.ForegroundColor = color.Value;
         Console.Write(content);
+        Console.ResetColor();
     }
-    public static void Logl(object content) => Logl(content, ConsoleColor.Gray);
-    public static void Logl(object content, ConsoleColor color)
+
+    private static void Ll(object content, ConsoleColor? color = null)
     {
-        Console.ForegroundColor = color;
-        Console.WriteLine(content);
-        Console.ForegroundColor = ConsoleColor.Gray;
+        L(content, color);
+        Console.WriteLine();
+    }
+
+    public static void WriteTitle(object icon, object title, ConsoleColor? color)
+    {
+        Ll($"{icon,2} {title}", color);
+    }
+
+    public static void WriteInfo(object key, object value, ConsoleColor? color = null)
+    {
+        L($" | {key,-24} "); Ll($"{value,35}", color);
+    }
+
+    public static void WriteInfoProportion(object key, object value, object maximum, object proportion)
+    {
+        Ll($" | {key,-24} {value,16:n0} / {maximum,16:n0} {proportion,8:P}");
+    }
+
+    public static string Read(object prompt, params string[] values)
+    {
+        L($" | {prompt} ({string.Join('/', values)}) "); var response = Console.ReadLine();
+
+        if (string.IsNullOrWhiteSpace(response))
+            return values.FirstOrDefault(string.Empty);
+        else
+            return response;
     }
 }

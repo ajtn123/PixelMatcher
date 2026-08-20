@@ -4,140 +4,116 @@ namespace PixelMatcher;
 
 public static class Matcher
 {
-    public static MatchResult[] Match(FileInfo baseImageFile, params FileInfo[] imageFiles)
+    public static ParallelQuery<MatchResult> Match(FileInfo baseImageFile, IEnumerable<FileInfo> imageFiles)
     {
-        var results = new MatchResult[imageFiles.Length];
+        var baseImage = new MagickImage(baseImageFile);
+        var baseInfo = ImageInfo.From(baseImage);
 
-        MagickImage baseImage = new(baseImageFile);
-        BaseImageInfo baseInfo = new(baseImage);
-        var bpc = baseImage.GetPixelsUnsafe();
-        var basePixels = bpc.ToArray();
+        var basePixels = baseImage.GetPixelsUnsafe().ToArray() ?? throw new Exception($"Cannot read {baseImageFile.FullName}");
         baseImage.Dispose();
-        if (basePixels == null) return results;
 
-        for (int i = 0; i < imageFiles.Length; i++)
+        return imageFiles.AsParallel().Select(imageFile =>
         {
-            MagickImage image = new(imageFiles[i]);
-            if (baseInfo.HasAlpha) image.Alpha(AlphaOption.Set);
-            var width = image.Width;
-            var height = image.Height;
-            var channels = image.Channels.ToArray();
-            var channelCount = image.ChannelCount;
-            var matchedWidth = Math.Min(width, baseInfo.Width);
-            var matchedHeight = Math.Min(height, baseInfo.Height);
-            var channelMap = Utils.MapChannel(baseInfo.Channels, channels);
-            (uint, uint)[] map = [.. channelMap.Select(x => (x.Item2, x.Item3))];
-            List<PixelDiff> diff = [];
+            var image = new MagickImage(imageFile);
+            var info = ImageInfo.From(image);
 
-            var pc = image.GetPixelsUnsafe();
-            var pixels = pc.ToArray();
+            var matchedWidth = Math.Min(baseInfo.Width, info.Width);
+            var matchedHeight = Math.Min(baseInfo.Height, info.Height);
+            var channelMap = Utils.MapChannel(baseInfo.Channels, info.Channels).ToArray();
+
+            var pixels = image.GetPixelsUnsafe().ToArray() ?? throw new Exception($"Cannot read {imageFile.FullName}");
             image.Dispose();
-            if (pixels != null)
-                for (int y = 0; y < matchedHeight; y++)
+
+            var diff = new List<PixelDiff>(1 << 16);
+            for (uint y = 0; y < matchedHeight; y++)
+            {
+                var startingBaseIndex = y * baseInfo.Width * baseInfo.ChannelCount;
+                var startingIndex = y * info.Width * info.ChannelCount;
+                for (uint x = 0; x < matchedWidth; x++)
                 {
-                    var startingBaseIndex = y * baseInfo.Width * baseInfo.ChannelCount;
-                    var startingIndex = y * width * channelCount;
-                    for (int x = 0; x < matchedWidth; x++)
+                    var channelDiffs = new byte[channelMap.Length];
+
+                    for (uint c = 0; c < channelMap.Length; c++)
                     {
-                        var channelDiffs = new byte[map.Length];
-
-                        for (uint c = 0; c < map.Length; c++)
-                        {
-                            var baseChannelIndex = map[c].Item1;
-                            var channelIndex = map[c].Item2;
-                            var baseChannel = baseChannelIndex == uint.MaxValue ? default : basePixels[startingBaseIndex + x * baseInfo.ChannelCount + baseChannelIndex];
-                            var channel = channelIndex == uint.MaxValue ? default : pixels[startingIndex + x * channelCount + channelIndex];
-                            channelDiffs[c] = (byte)Math.Abs(baseChannel - channel);
-                        }
-
-                        if (channelDiffs.Any(d => d != 0))
-                            diff.Add(new(x, y, channelDiffs));
+                        var baseChannel = basePixels[startingBaseIndex + x * baseInfo.ChannelCount + channelMap[c].BaseIndex];
+                        var channel = pixels[startingIndex + x * info.ChannelCount + channelMap[c].Index];
+                        channelDiffs[c] = (byte)Math.Abs(baseChannel - channel);
                     }
+
+                    if (channelDiffs.Any(d => d != 0))
+                        diff.Add(new(x, y, channelDiffs));
                 }
-            results[i] = new() { DifferentPixels = [.. diff], ImageWidth = width, ImageHeight = height, BaseImageInfo = baseInfo, ChannelMap = channelMap };
-        }
-        return results;
+            }
+
+            return new MatchResult(baseImageFile, baseInfo, imageFile, info, matchedWidth, matchedHeight, channelMap, diff);
+        });
     }
 }
 
-public class MatchResult
+public record MatchResult(
+    FileInfo BaseImageFile, ImageInfo BaseImageInfo,
+    FileInfo ImageFile, ImageInfo ImageInfo,
+    uint MatchedWidth, uint MatchedHeight,
+    IEnumerable<Utils.ChannelPosition> ChannelMap,
+    List<PixelDiff> DifferentPixels
+)
 {
-    public bool IsExact => DifferentPixels.Length == 0;
-    public double Deviation => DifferentPixels.StandardDeviation(MatchedWidth * MatchedHeight * ChannelMap.Length);
-    public required uint ImageWidth { get; set; }
-    public required uint ImageHeight { get; set; }
-    public uint MatchedWidth => Math.Min(ImageWidth, BaseImageInfo.Width);
-    public uint MatchedHeight => Math.Min(ImageHeight, BaseImageInfo.Height);
-    public required (PixelChannel, uint, uint)[] ChannelMap { get; set; }
-    public required PixelDiff[] DifferentPixels { get; set; }
-    public required BaseImageInfo BaseImageInfo { get; set; }
+    public int Index { get; set; }
+
+    public bool Identical => DifferentPixels.Count == 0;
+
+    public double StandardDeviation()
+    {
+        long deviation = 0;
+        foreach (var pixel in DifferentPixels)
+            foreach (var channel in pixel.ChannelDiffs)
+                deviation += channel * channel;
+        return Math.Sqrt(deviation / (MatchedWidth * MatchedHeight * ChannelMap.Count()));
+    }
+
+    public IEnumerable<(PixelChannel Channel, bool IsFromBase)> UncomparedChannels =>
+    [
+        .. BaseImageInfo.Channels.Except(ChannelMap.Select(o => o.Channel)).Select(o => (o, true)),
+        .. ImageInfo.Channels.Except(ChannelMap.Select(o => o.Channel)).Select(o => (o, false)),
+    ];
 
     public MagickImage GenerateDiffImage()
     {
         var diff = DifferentPixels;
         var width = MatchedWidth;
         var height = MatchedHeight;
-        var image = new MagickImage(MagickColors.Black, width, height)
+        var hasAlpha = ChannelMap.Any(o => o.Channel is PixelChannel.Alpha);
+        var image = new MagickImage(MagickColors.Transparent, width, height)
         {
-            ColorSpace = BaseImageInfo.ColorSpace,
-            Depth = BaseImageInfo.Depth,
-            HasAlpha = BaseImageInfo.HasAlpha
+            ColorSpace = new MagickImageInfo(BaseImageFile).ColorSpace,
+            HasAlpha = true
         };
-        var pixels = image.GetPixels();
-        var pixelsArray = pixels.ToArray();
-        if (pixelsArray == null) return image;
-        var channelCount = (int)image.ChannelCount;
-        var alphaChannelIndex = image.Channels.Index().FirstOrDefault(x => x.Item2 == PixelChannel.Alpha, (int.MinValue, PixelChannel.Alpha)).Item1;
+        var aplhaChannelIndex = image.Channels.Index().First(o => o.Item is PixelChannel.Alpha).Index;
+        var channelCount = image.ChannelCount;
+        var channelMap = Utils.MapChannel(image.Channels, ChannelMap.Select(x => x.Channel)).ToArray();
 
-        if (channelCount == BaseImageInfo.ChannelCount)
-            if (image.HasAlpha)
-                foreach (var pixel in diff)
-                {
-                    var pixelData = pixel.ChannelDiffs.ToArray();
-                    pixelData[alphaChannelIndex] = (byte)(Quantum.Max - pixelData[alphaChannelIndex]);
-                    Array.Copy(pixelData, 0, pixelsArray, (pixel.Y * width + pixel.X) * channelCount, channelCount);
-                }
-            else
-                foreach (var pixel in diff)
-                    Array.Copy(pixel.ChannelDiffs.ToArray(), 0, pixelsArray, (pixel.Y * width + pixel.X) * channelCount, channelCount);
-        else
+        var pc = image.GetPixelsUnsafe();
+        var pixels = pc.ToArray() ?? throw new Exception($"Cannot generate diff image between {BaseImageFile.FullName} and {ImageFile.FullName}");
+
+        foreach (var pixel in diff)
         {
-            Console.WriteLine("Remapping Diff Image Channel");
-            var map = Utils.MapChannel(image.Channels, BaseImageInfo.Channels).OrderBy(x => x.Item3).Select(x => x.Item2);
-
-            if (image.HasAlpha)
-                foreach (var pixel in diff)
-                {
-                    var pixelData = pixel.ChannelDiffs.Zip(map).OrderBy(x => x.Second).Take(channelCount).Select(x => x.First).ToArray();
-                    pixelData[alphaChannelIndex] = (byte)(Quantum.Max - pixelData[alphaChannelIndex]);
-                    Array.Copy(pixelData, 0, pixelsArray, (pixel.Y * width + pixel.X) * channelCount, channelCount);
-                }
-            else
-                foreach (var pixel in diff)
-                    Array.Copy(pixel.ChannelDiffs.Zip(map).OrderBy(x => x.Second).Take(channelCount).Select(x => x.First).ToArray(), 0, pixelsArray, (pixel.Y * width + pixel.X) * channelCount, channelCount);
+            var startingIndex = (pixel.Y * width + pixel.X) * channelCount;
+            for (uint c = 0; c < channelMap.Length; c++)
+            {
+                pixels[startingIndex + channelMap[c].BaseIndex] = pixel.ChannelDiffs[channelMap[c].Index];
+            }
+            pixels[startingIndex + aplhaChannelIndex] = (byte)(Quantum.Max - pixels[startingIndex + aplhaChannelIndex]);
         }
 
-        pixels.SetPixels(pixelsArray);
-        image.Transparent(MagickColors.Black);
+        pc.SetPixels(pixels);
 
         return image;
     }
 }
 
-public readonly struct PixelDiff(int x, int y, params byte[] channelDiffs)
-{
-    public int X { get; } = x;
-    public int Y { get; } = y;
-    public byte[] ChannelDiffs { get; } = channelDiffs;
-}
+public readonly record struct PixelDiff(uint X, uint Y, byte[] ChannelDiffs);
 
-public class BaseImageInfo(MagickImage image)
+public readonly record struct ImageInfo(uint ChannelCount, uint Width, uint Height, PixelChannel[] Channels)
 {
-    public uint Width { get; } = image.Width;
-    public uint Height { get; } = image.Height;
-    public PixelChannel[] Channels { get; } = [.. image.Channels];
-    public uint ChannelCount { get; } = image.ChannelCount;
-    public ColorSpace ColorSpace { get; } = image.ColorSpace;
-    public uint Depth { get; } = image.Depth;
-    public bool HasAlpha { get; } = image.HasAlpha;
+    public static ImageInfo From(MagickImage image) => new(image.ChannelCount, image.Width, image.Height, [.. image.Channels]);
 }
