@@ -56,14 +56,4 @@ public static class Utils
     {
         Ll($" | {key,-24} {value,16:n0} / {maximum,16:n0} {proportion,8:P}");
     }
-
-    public static string Read(object prompt, params string[] values)
-    {
-        L($" | {prompt} ({string.Join('/', values)}) "); var response = Console.ReadLine();
-
-        if (string.IsNullOrWhiteSpace(response))
-            return values.FirstOrDefault(string.Empty);
-        else
-            return response;
-    }
 }

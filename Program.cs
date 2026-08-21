@@ -1,99 +1,144 @@
-﻿using System.Diagnostics;
+﻿using System.CommandLine;
+using System.Diagnostics;
 using ImageMagick;
 using PixelMatcher;
 
-var files = args
-    .Where(x => !string.IsNullOrWhiteSpace(x))
-    .Select(x => new FileInfo(x))
-    .ToArray();
-
-var missingFiles = files.Where(f => !f.Exists);
-if (missingFiles.Any())
+var baseImageArgument = new Argument<FileInfo>("base-image")
 {
-    Utils.WriteTitle("!", "Missing Files", ConsoleColor.Red);
-    foreach (var missingFile in missingFiles)
-        Utils.WriteTitle("|", missingFile.FullName, ConsoleColor.Red);
-    return;
-}
+    Description = "Image to compare against.",
+}.AcceptExistingOnly();
 
-if (files.Length < 2)
+var imagesArgument = new Argument<FileInfo[]>("images")
 {
-    Utils.WriteTitle("!", "Provide at least 2 images", ConsoleColor.Red);
-    return;
-}
+    Description = "Images to compare with the base image.",
+    Arity = ArgumentArity.OneOrMore,
+}.AcceptExistingOnly();
 
-Stopwatch stopwatch = Stopwatch.StartNew();
-
-var results = Matcher.Match(files.First(), files.Skip(1)).ToArray();
-
-stopwatch.Stop();
-
-var fileNames = Utils.ShortenPaths(files.Select(x => x.FullName)).ToArray();
-Utils.WriteTitle(0, fileNames[0], ConsoleColor.Yellow);
-Utils.WriteInfo("Dimensions", $"{results[0].BaseImageInfo.Width:n0}*{results[0].BaseImageInfo.Height:n0}");
-
-for (int i = 1; i < files.Length; i++)
+var resizeOption = new Option<ResizeMode>("--resize", "-r")
 {
-    var r = results.First(o => o.ImageFile == files[i]);
-    r.Index = i;
-    var imageWidth = r.ImageInfo.Width;
-    var imageHeight = r.ImageInfo.Height;
-    var imagePixels = imageWidth * imageHeight;
-    var matchedWidth = r.MatchedWidth;
-    var matchedHeight = r.MatchedHeight;
-    var matchedPixels = matchedWidth * matchedHeight;
-    var matchedPercentage = (double)matchedPixels / imagePixels;
-    var diffPixels = r.DifferentPixels.Count;
-    var diffPercentage = (double)diffPixels / matchedPixels;
-    var deviation = r.StandardDeviation();
-    var maxDeviation = Quantum.Max;
-    var deviationPercentage = deviation / maxDeviation;
-    var uncompared = r.UncomparedChannels;
-    var identical = r.Identical;
+    Description = "Resize comparison images before comparing.",
+    DefaultValueFactory = _ => ResizeMode.None,
+};
 
-    Utils.WriteTitle(i, fileNames[i], ConsoleColor.Blue);
-    Utils.WriteInfoProportion("Compared Area", $"{matchedWidth:n0}*{matchedHeight:n0}", $"{imageWidth:n0}*{imageHeight:n0}", matchedPercentage);
-    Utils.WriteInfoProportion("Different Pixels", diffPixels, matchedPixels, diffPercentage);
-    Utils.WriteInfoProportion("Standard Deviation", $"{deviation:n3}", maxDeviation, deviationPercentage);
-    foreach ((var channel, var isFromBase) in uncompared)
+var diffImageOption = new Option<bool>("--diff-image")
+{
+    Description = "Write diff images.",
+    DefaultValueFactory = _ => false,
+};
+
+var diffImageFormatOption = new Option<MagickFormat>("--diff-image-format")
+{
+    Description = "Format of diff images.",
+    DefaultValueFactory = _ => MagickFormat.Png,
+    HelpName = "image-format",
+};
+
+var diffImageQualityOption = new Option<uint>("--diff-image-quality")
+{
+    Description = "Quality of diff images.",
+    DefaultValueFactory = _ => 100,
+    HelpName = "0-100",
+};
+
+var rootCommand = new RootCommand("Compare images pixel by pixel.")
+{
+    baseImageArgument,
+    imagesArgument,
+    resizeOption,
+    diffImageOption,
+    diffImageFormatOption,
+    diffImageQualityOption,
+};
+
+rootCommand.SetAction(parseResult =>
+{
+    var baseImage = parseResult.GetRequiredValue(baseImageArgument);
+    var images = parseResult.GetRequiredValue(imagesArgument);
+    var resize = parseResult.GetValue(resizeOption);
+    var diffImage = parseResult.GetValue(diffImageOption);
+    var diffFormat = parseResult.GetValue(diffImageFormatOption);
+    var diffQuality = parseResult.GetValue(diffImageQualityOption);
+
+    var files = (FileInfo[])[baseImage, .. images];
+    var fileNames = Utils.ShortenPaths(files.Select(x => x.FullName)).ToArray();
+
+    var formats = MagickNET.SupportedFormats
+        .Where(x => x.SupportsWriting)
+        .Select(x => x.Format);
+    if (!formats.Contains(diffFormat))
     {
-        Utils.WriteInfo("Uncompared Channel", channel, isFromBase ? ConsoleColor.Yellow : ConsoleColor.Blue);
+        Utils.WriteTitle("!", $"{diffFormat} is not supported for writing", ConsoleColor.Red);
+        return 1;
     }
-    Utils.WriteInfo("Identical", identical, identical ? ConsoleColor.Green : ConsoleColor.Red);
-}
 
-var identicalCount = results.Count(x => x.Identical);
-var identicalPercentage = identicalCount / results.Length;
+    Stopwatch stopwatch = Stopwatch.StartNew();
+    var results = Matcher.Match(baseImage, images, resize).ToArray();
+    stopwatch.Stop();
 
-Utils.WriteTitle("+", "Summary", ConsoleColor.Yellow);
-Utils.WriteInfo("Time Used", $"{stopwatch.Elapsed.TotalSeconds:n3} s");
-Utils.WriteInfoProportion("Identical Images", identicalCount, results.Length, identicalPercentage);
+    Utils.WriteTitle(0, fileNames[0], ConsoleColor.Yellow);
+    Utils.WriteInfo("Dimensions", $"{results[0].BaseImageInfo.Width:n0}*{results[0].BaseImageInfo.Height:n0}");
 
-if (identicalCount == results.Length)
-{
-    Utils.WriteTitle("!", "All Images Are Identical", ConsoleColor.Green);
-    return;
-}
+    for (int i = 1; i < files.Length; i++)
+    {
+        var r = results.First(o => o.ImageFile == files[i]);
+        r.Index = i;
+        var imageWidth = r.ImageInfo.Width;
+        var imageHeight = r.ImageInfo.Height;
+        var imagePixels = imageWidth * imageHeight;
+        var matchedWidth = r.MatchedWidth;
+        var matchedHeight = r.MatchedHeight;
+        var matchedPixels = matchedWidth * matchedHeight;
+        var matchedPercentage = (double)matchedPixels / imagePixels;
+        var diffPixels = r.DifferentPixels.Count;
+        var diffPercentage = (double)diffPixels / matchedPixels;
+        var deviation = r.StandardDeviation();
+        var maxDeviation = Quantum.Max;
+        var deviationPercentage = deviation / maxDeviation;
+        var uncompared = r.UncomparedChannels;
+        var identical = r.Identical;
 
-Utils.WriteTitle("+", "Diff Images", ConsoleColor.Yellow);
+        Utils.WriteTitle(i, fileNames[i], ConsoleColor.Blue);
+        Utils.WriteInfoProportion("Compared Area", $"{matchedWidth:n0}*{matchedHeight:n0}", $"{imageWidth:n0}*{imageHeight:n0}", matchedPercentage);
+        Utils.WriteInfoProportion("Different Pixels", diffPixels, matchedPixels, diffPercentage);
+        Utils.WriteInfoProportion("Standard Deviation", $"{deviation:n3}", maxDeviation, deviationPercentage);
+        foreach ((var channel, var isFromBase) in uncompared)
+        {
+            Utils.WriteInfo("Uncompared Channel", channel, isFromBase ? ConsoleColor.Yellow : ConsoleColor.Blue);
+        }
+        Utils.WriteInfo("Identical", identical, identical ? ConsoleColor.Green : ConsoleColor.Red);
+    }
 
-if (Utils.Read("Save", "Y", "n").ToUpper() is not "Y") return;
+    var identicalCount = results.Count(x => x.Identical);
+    var identicalPercentage = identicalCount / results.Length;
 
-var formats = MagickNET.SupportedFormats
-    .Where(x => x.SupportsWriting)
-    .Select(x => x.Format.ToString().ToLower());
-if (Utils.Read("Format", "PNG").Trim('.').ToLower() is not { } format || !formats.Contains(format))
-{
-    Utils.WriteTitle("!", "Format is not supported", ConsoleColor.Red);
-    return;
-}
+    Utils.WriteTitle("+", "Summary", ConsoleColor.Yellow);
+    Utils.WriteInfo("Time Used", $"{stopwatch.Elapsed.TotalSeconds:n3} s");
+    Utils.WriteInfoProportion("Identical Images", identicalCount, results.Length, identicalPercentage);
 
-var opid = Random.Shared.GetHexString(4, true);
-foreach (var r in results.Where(r => !r.Identical))
-{
-    var diffImage = r.GenerateDiffImage();
-    var diffImageFile = $"diff-{opid}-{r.Index}.{format}";
-    Utils.WriteTitle("|", $"Writing {diffImageFile}", ConsoleColor.Yellow);
-    diffImage.Write(diffImageFile);
-    diffImage.Dispose();
-}
+    if (identicalCount == results.Length)
+    {
+        Utils.WriteTitle("!", "All Images Are Identical", ConsoleColor.Green);
+        return 0;
+    }
+
+    if (!diffImage)
+        return 0;
+
+    Utils.WriteTitle("+", "Diff Images", ConsoleColor.Yellow);
+
+    var opid = Random.Shared.GetHexString(4, true);
+    foreach (var r in results.Where(r => !r.Identical))
+    {
+        var diffImageMagick = r.GenerateDiffImage();
+        diffImageMagick.Format = diffFormat;
+        diffImageMagick.Quality = diffQuality;
+        var diffImageFile = $"diff-{opid}-{r.Index}.{diffFormat.ToString().ToLower()}";
+        Utils.WriteTitle("|", $"Writing {diffImageFile}", ConsoleColor.Yellow);
+        diffImageMagick.Write(diffImageFile);
+        diffImageMagick.Dispose();
+    }
+
+    return 0;
+});
+
+return rootCommand.Parse(args).Invoke();

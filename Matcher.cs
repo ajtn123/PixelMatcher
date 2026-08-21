@@ -4,7 +4,7 @@ namespace PixelMatcher;
 
 public static class Matcher
 {
-    public static ParallelQuery<MatchResult> Match(FileInfo baseImageFile, IEnumerable<FileInfo> imageFiles)
+    public static ParallelQuery<MatchResult> Match(FileInfo baseImageFile, IEnumerable<FileInfo> imageFiles, ResizeMode resizeMode = ResizeMode.None)
     {
         var baseImage = new MagickImage(baseImageFile);
         var baseInfo = ImageInfo.From(baseImage);
@@ -15,6 +15,7 @@ public static class Matcher
         return imageFiles.AsParallel().Select(imageFile =>
         {
             var image = new MagickImage(imageFile);
+            Resizer.Resize(image, baseInfo.Width, baseInfo.Height, resizeMode);
             var info = ImageInfo.From(image);
 
             var matchedWidth = Math.Min(baseInfo.Width, info.Width);
