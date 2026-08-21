@@ -31,6 +31,14 @@ var diffImageFormatOption = new Option<MagickFormat>("--diff-image-format")
     Description = "Format of diff images.",
     DefaultValueFactory = _ => MagickFormat.Png,
     HelpName = "image-format",
+    Validators = { result => { try {
+        var value = result.GetValueOrDefault<MagickFormat>();
+        var formats = MagickNET.SupportedFormats
+            .Where(x => x.SupportsWriting)
+            .Select(x => x.Format);
+        if (!formats.Contains(value))
+            result.AddError($"{value} is not supported for writing");
+    } catch { } } }
 };
 
 var diffImageQualityOption = new Option<uint>("--diff-image-quality")
@@ -61,15 +69,6 @@ rootCommand.SetAction(parseResult =>
 
     var files = (FileInfo[])[baseImage, .. images];
     var fileNames = Utils.ShortenPaths(files.Select(x => x.FullName)).ToArray();
-
-    var formats = MagickNET.SupportedFormats
-        .Where(x => x.SupportsWriting)
-        .Select(x => x.Format);
-    if (!formats.Contains(diffFormat))
-    {
-        Utils.WriteTitle("!", $"{diffFormat} is not supported for writing", ConsoleColor.Red);
-        return 1;
-    }
 
     Stopwatch stopwatch = Stopwatch.StartNew();
     var results = Matcher.Match(baseImage, images, resize).ToArray();
@@ -133,7 +132,7 @@ rootCommand.SetAction(parseResult =>
         diffImageMagick.Format = diffFormat;
         diffImageMagick.Quality = diffQuality;
         var diffImageFile = $"diff-{opid}-{r.Index}.{diffFormat.ToString().ToLower()}";
-        Utils.WriteTitle("|", $"Writing {diffImageFile}", ConsoleColor.Yellow);
+        Utils.WriteInfo(fileNames[r.Index], diffImageFile);
         diffImageMagick.Write(diffImageFile);
         diffImageMagick.Dispose();
     }
